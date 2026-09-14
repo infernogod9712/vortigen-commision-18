@@ -120,11 +120,15 @@ is("no staff role set means everyone can", settings.canUseShifts(memberWithout, 
 section("TIER 2b  shift handler");
 
 const shifts = require("./handlers/shifts");
-const S = { resetDay: 1, resetHour: 4, utcOffset: -5, maxShiftHours: 12 };
+const OFFSET = -5;
+const anchor = new Date(Date.now() - 3 * 86400000 + OFFSET * 3600000);
+const S = { resetDay: anchor.getUTCDay(), resetHour: anchor.getUTCHours(), utcOffset: OFFSET, maxShiftHours: 12 };
 const H = "444444444444444444";
 const U = "555555555555555555";
 
 const week = shifts.currentWeek(S);
+truthy("test week began long enough ago to hold a 30h shift", Date.now() - week > 31 * 3600000,
+    `week began ${((Date.now() - week) / 3600000).toFixed(1)}h ago; shifts older than that land in last week`);
 const asLocal = new Date(week + S.utcOffset * 3600000);
 is("week starts on the configured day", asLocal.getUTCDay(), S.resetDay);
 is("week starts at the configured hour", asLocal.getUTCHours(), S.resetHour);
