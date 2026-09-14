@@ -1,0 +1,14 @@
+{
+  "name": "vortigen-commision-18",
+  "version": "1.0.0",
+  "description": "Vortigen commission bot: moderation commands",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "check": "node check.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.5"
+  }
+}
