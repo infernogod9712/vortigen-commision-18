@@ -10,6 +10,8 @@ const DEFAULTS = {
     resetHour: 0,
     utcOffset: 0,
     maxShiftHours: 12,
+    siteShiftChannel: null,
+    siteShiftPingRole: null,
 
     currencyName: "WILL",
     currencySymbol: "",

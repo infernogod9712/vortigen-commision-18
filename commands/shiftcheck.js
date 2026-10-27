@@ -2,6 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js"
 const { getSettings, canUseShifts } = require("../handlers/settings");
 const { getStatus, currentWeek, formatDuration } = require("../handlers/shifts");
 
+const PERIOD = { day: "Day", night: "Night" };
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("shiftcheck")
@@ -27,7 +29,7 @@ module.exports = {
 
         let state = "Off shift";
         if (status.onBreak) state = "On break (clock paused)";
-        else if (status.onShift) state = "On shift";
+        else if (status.onShift) state = status.period ? `On ${PERIOD[status.period]} shift` : "On shift";
 
         const embed = new EmbedBuilder()
             .setTitle(`Shift record for ${target.tag}`)
@@ -35,7 +37,9 @@ module.exports = {
             .addFields(
                 { name: "Status", value: state, inline: true },
                 { name: "Shifts this week", value: String(status.sessions), inline: true },
-                { name: "Logged this week", value: formatDuration(status.weekMs), inline: true }
+                { name: "Logged this week", value: formatDuration(status.weekMs), inline: true },
+                { name: "Day shift", value: formatDuration(status.dayMs), inline: true },
+                { name: "Night shift", value: formatDuration(status.nightMs), inline: true }
             )
             .setColor(status.onShift ? 0x57f287 : 0x5865f2)
             .setFooter({ text: "Resets weekly" })

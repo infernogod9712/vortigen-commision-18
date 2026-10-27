@@ -28,9 +28,10 @@ module.exports = {
         const lines = top.map((r, i) => {
             const medal = MEDALS[i] || `**${i + 1}.**`;
             const total = formatDuration(r.ms + r.live);
-            const live = r.live > 0 ? " *(on shift)*" : "";
+            const live = r.live > 0 ? ` *(on ${r.livePeriod === "night" ? "Night" : "Day"} shift)*` : "";
             const count = r.sessions === 1 ? "1 shift" : `${r.sessions} shifts`;
-            return `${medal} <@${r.userId}> - **${total}** (${count})${live}`;
+            const split = r.dayMs || r.nightMs ? `, ${formatDuration(r.dayMs)} day / ${formatDuration(r.nightMs)} night` : "";
+            return `${medal} <@${r.userId}> - **${total}** (${count}${split})${live}`;
         });
 
         const totalMs = rows.reduce((sum, r) => sum + r.ms + r.live, 0);

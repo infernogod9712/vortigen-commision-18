@@ -2,6 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js"
 const { getSettings, canUseShifts } = require("../handlers/settings");
 const { startShift, toggleBreak, endShift, getStatus, formatDuration } = require("../handlers/shifts");
 
+const PERIOD = { day: "Day", night: "Night" };
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("shiftmanage")
@@ -41,7 +43,7 @@ module.exports = {
             }
             const embed = new EmbedBuilder()
                 .setTitle("Shift started")
-                .setDescription(`<@${userId}> clocked in <t:${Math.floor(Date.now() / 1000)}:R>.`)
+                .setDescription(`<@${userId}> clocked in for **${PERIOD[res.period]} shift** <t:${Math.floor(Date.now() / 1000)}:R>.`)
                 .setColor(0x57f287)
                 .setTimestamp();
             return interaction.reply({ embeds: [embed] });
@@ -78,11 +80,12 @@ module.exports = {
         const status = getStatus(guildId, userId, settings);
         const embed = new EmbedBuilder()
             .setTitle("Shift ended")
-            .setDescription(`<@${userId}> clocked out.`)
+            .setDescription(res.period ? `<@${userId}> clocked out of **${PERIOD[res.period]} shift**.` : `<@${userId}> clocked out.`)
             .addFields(
                 { name: "This shift", value: formatDuration(res.workedMs), inline: true },
                 { name: "On break", value: formatDuration(res.breakMs), inline: true },
-                { name: "Total this week", value: formatDuration(status.weekMs), inline: true }
+                { name: "Total this week", value: formatDuration(status.weekMs), inline: true },
+                { name: "Day / Night this week", value: `${formatDuration(status.dayMs)} / ${formatDuration(status.nightMs)}`, inline: true }
             )
             .setColor(0xed4245)
             .setTimestamp();

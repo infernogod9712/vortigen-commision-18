@@ -172,6 +172,74 @@ is("leaderboard has both members", board.rows.length, 2);
 is("capped member ranks first", board.rows[0].userId, "777777777777777777");
 is("last week is empty", shifts.getLeaderboard(H, S, "last").rows.length, 0);
 
+section("TIER 2b2  site shift (day / night)");
+
+const D = "121212121212121212";
+is("unset site shift counts as day", shifts.getSiteShift(D).shift, "day");
+is("unset site shift has no setter", shifts.getSiteShift(D).changedBy, null);
+
+const dayStart = shifts.startShift(D, U, S);
+is("shift started on an unset site is tagged day", dayStart.period, "day");
+
+const toNight = shifts.setSiteShift(D, "night", H);
+is("switching reports the previous shift", toNight.previous, "day");
+is("switching to night is a change", toNight.unchanged, false);
+is("site shift now reads night", shifts.getSiteShift(D).shift, "night");
+is("setter is recorded", shifts.getSiteShift(D).changedBy, H);
+is("setting night again is flagged unchanged", shifts.setSiteShift(D, "night", H).unchanged, true);
+
+let threw = false;
+try { shifts.setSiteShift(D, "evening", H); } catch { threw = true; }
+is("unknown site shift is rejected", threw, true);
+is("rejected value did not overwrite", shifts.getSiteShift(D).shift, "night");
+
+is("already running shift keeps its day tag", shifts.getStatus(D, U, S).period, "day");
+
+function patchActiveIn(guildId, userId, p) {
+    const file = path.join(SCRATCH, "shifts.json");
+    const all = JSON.parse(fs.readFileSync(file, "utf8"));
+    Object.assign(all[guildId].active[userId], p);
+    fs.writeFileSync(file, JSON.stringify(all, null, 2));
+}
+
+patchActiveIn(D, U, { startedAt: Date.now() - 60 * 60000 });
+is("ending reports the day tag", shifts.endShift(D, U, S).period, "day");
+
+const N = "131313131313131313";
+is("shift started during night is tagged night", shifts.startShift(D, N, S).period, "night");
+patchActiveIn(D, N, { startedAt: Date.now() - 120 * 60000 });
+const liveBoard = shifts.getLeaderboard(D, S, "current");
+is("leaderboard shows the live night tag", liveBoard.rows.find(r => r.userId === N).livePeriod, "night");
+shifts.endShift(D, N, S);
+
+shifts.startShift(D, U, S);
+patchActiveIn(D, U, { startedAt: Date.now() - 30 * 60000 });
+shifts.endShift(D, U, S);
+
+const split = shifts.getStatus(D, U, S);
+is("day time credited", shifts.formatDuration(split.dayMs), "1h");
+is("night time credited", shifts.formatDuration(split.nightMs), "30m");
+is("day plus night equals the week total", split.dayMs + split.nightMs, split.weekMs);
+is("night-only member has no day time", shifts.getStatus(D, N, S).dayMs, 0);
+
+const splitBoard = shifts.getLeaderboard(D, S, "current");
+is("leaderboard carries the night split", shifts.formatDuration(splitBoard.rows.find(r => r.userId === N).nightMs), "2h");
+
+shifts.startShift(D, "141414141414141414", S);
+patchActiveIn(D, "141414141414141414", { startedAt: Date.now() - 30 * 3600000 });
+is("auto closed night shift is credited as night",
+    shifts.formatDuration(shifts.getStatus(D, "141414141414141414", S).nightMs), "12h");
+
+const OLD = "151515151515151515";
+const shiftFile = path.join(SCRATCH, "shifts.json");
+const allShifts = JSON.parse(fs.readFileSync(shiftFile, "utf8"));
+allShifts[OLD] = { active: {}, weeks: { [week]: { [U]: { ms: 80 * 60000, sessions: 1 } } } };
+fs.writeFileSync(shiftFile, JSON.stringify(allShifts, null, 2));
+const legacy = shifts.getStatus(OLD, U, S);
+is("records from before the split still show their total", shifts.formatDuration(legacy.weekMs), "1h 20m");
+is("records from before the split show zero day time", legacy.dayMs, 0);
+is("old guild file with no site entry reads as day", shifts.getSiteShift(OLD).shift, "day");
+
 section("TIER 2c  formatDuration");
 
 for (const [ms, expected] of [

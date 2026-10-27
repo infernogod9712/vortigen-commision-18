@@ -20,17 +20,13 @@ if (PLACEHOLDERS.includes(TOKEN)) {
 }
 
 if (!OWNER_IDS.length) {
-    console.error("[vortigen] OWNER_IDS is missing from .env. Add: OWNER_IDS=id1,id2");
-    console.error("[vortigen] Without it nobody can run !sc, so the bot would be unusable. Staying offline.");
-    process.exit(1);
+    console.warn("[vortigen] OWNER_IDS is missing from .env. Add: OWNER_IDS=id1,id2");
 }
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMembers
     ]
 })
 
@@ -57,7 +53,17 @@ if (failed.length) {
     for (const line of failed) console.error(`  - ${line}`);
 }
 
-client.once(Events.ClientReady, () => {
+async function registerCommands(guild) {
+    const data = [...client.commands.values()].map(c => c.data.toJSON());
+    try {
+        await guild.commands.set(data);
+        console.log(`[vortigen] Registered ${data.length} command(s) in ${guild.name}.`);
+    } catch (err) {
+        console.error(`[vortigen] Could not register commands in ${guild.name}:`, err.message);
+    }
+}
+
+client.once(Events.ClientReady, async () => {
     console.log(`[vortigen] Online as ${client.user.tag} in ${client.guilds.cache.size} server(s).`);
     console.log(`[vortigen] Loaded ${client.commands.size} command(s): ${[...client.commands.keys()].join(", ")}`);
     console.log(`[vortigen] Owners: ${OWNER_IDS.join(", ")}`);
@@ -73,6 +79,14 @@ client.once(Events.ClientReady, () => {
         }
         seedLottery(guild.id, s);
     }
+
+    // Commands used to be global through !sc; clear those so they do not show up twice next to the guild copies.
+    try {
+        await client.application.commands.set([]);
+    } catch (err) {
+        console.error("[vortigen] Could not clear old global commands:", err.message);
+    }
+    for (const guild of client.guilds.cache.values()) await registerCommands(guild);
 
     setInterval(runLotteryDraws, 60000);
     runLotteryDraws();
@@ -118,6 +132,8 @@ async function runLotteryDraws() {
     }
 }
 
+client.on(Events.GuildCreate, (guild) => registerCommands(guild));
+
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (!interaction.isChatInputCommand()) return;
@@ -131,42 +147,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
             interaction.reply({ content: "Something went wrong.", flags: MessageFlags.Ephemeral }).catch(() => {});
         }
-    }
-})
-
-client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.guild) return;
-
-    const text = message.content.trim();
-    if (text !== "!sc" && text !== "!sc here") return;
-    if (!OWNER_IDS.includes(message.author.id)) {
-        return message.reply("Only a bot owner can sync commands.").catch(() => {});
-    }
-
-    const data = [...client.commands.values()].map(c => c.data.toJSON());
-
-    try {
-        if (text === "!sc here") {
-            await message.guild.commands.set(data);
-            return message.reply(`Synced ${data.length} command(s) to this server only. They are usable right now.`);
-        }
-
-        await client.application.commands.set(data);
-
-        let cleared = 0;
-        for (const guild of client.guilds.cache.values()) {
-            try {
-                await guild.commands.set([]);
-                cleared += 1;
-            } catch (e) {
-                console.warn(`[vortigen] could not clear guild commands in ${guild.id}:`, e.message);
-            }
-        }
-
-        await message.reply(`Synced ${data.length} command(s) to every server and cleared local copies in ${cleared}. Global commands can take up to an hour to appear. Use \`!sc here\` if you want them instantly.`);
-    } catch (err) {
-        console.error("[vortigen] sync error:", err);
-        await message.reply(`Sync failed: ${err.message}`).catch(() => {});
     }
 })
 

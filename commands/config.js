@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags, ChannelType } = require("discord.js");
 const { getSettings, updateSettings } = require("../handlers/settings");
 const { currentWeek } = require("../handlers/shifts");
 
@@ -27,13 +27,30 @@ module.exports = {
         .addIntegerOption(opt =>
             opt.setName("max_shift_hours")
                 .setDescription("Auto close a shift left running this long")
-                .setMinValue(1).setMaxValue(48)),
+                .setMinValue(1).setMaxValue(48))
+        .addChannelOption(opt =>
+            opt.setName("site_shift_channel")
+                .setDescription("Channel where /siteshift announces Day and Night shift")
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+        .addRoleOption(opt =>
+            opt.setName("site_shift_ping_role")
+                .setDescription("Role pinged when the site shift changes"))
+        .addBooleanOption(opt =>
+            opt.setName("clear_site_shift_ping")
+                .setDescription("Stop pinging a role when the site shift changes")),
 
     async execute(interaction) {
         const patch = {};
 
         const staffRole = interaction.options.getRole("staff_role");
         if (staffRole) patch.staffRole = staffRole.id;
+
+        const siteChannel = interaction.options.getChannel("site_shift_channel");
+        if (siteChannel) patch.siteShiftChannel = siteChannel.id;
+
+        const pingRole = interaction.options.getRole("site_shift_ping_role");
+        if (pingRole) patch.siteShiftPingRole = pingRole.id;
+        if (interaction.options.getBoolean("clear_site_shift_ping")) patch.siteShiftPingRole = null;
 
         const resetDay = interaction.options.getString("reset_day");
         if (resetDay !== null) patch.resetDay = Number(resetDay);
@@ -62,6 +79,8 @@ module.exports = {
                 { name: "Week resets", value: `${DAYS[s.resetDay]} at ${String(s.resetHour).padStart(2, "0")}:00`, inline: true },
                 { name: "Timezone", value: `UTC${offset}`, inline: true },
                 { name: "Auto close shifts after", value: `${s.maxShiftHours}h`, inline: true },
+                { name: "Site shift channel", value: s.siteShiftChannel ? `<#${s.siteShiftChannel}>` : "*(posts where /siteshift is run)*", inline: true },
+                { name: "Site shift ping", value: s.siteShiftPingRole ? `<@&${s.siteShiftPingRole}>` : "*(no ping)*", inline: true },
                 { name: "Next reset", value: `<t:${nextReset}:F>`, inline: false }
             )
             .setFooter({ text: changed ? "Settings saved." : "Run /config with options to change any of these." })

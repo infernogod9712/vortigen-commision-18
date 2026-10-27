@@ -19,7 +19,7 @@ function writeAll(obj) {
 }
 
 function getGuild(all, guildId) {
-    if (!all[guildId]) all[guildId] = { active: {}, weeks: {} };
+    if (!all[guildId]) all[guildId] = { active: {}, weeks: {}, site: null };
     if (!all[guildId].active) all[guildId].active = {};
     if (!all[guildId].weeks) all[guildId].weeks = {};
     return all[guildId];
@@ -47,12 +47,17 @@ function previousWeek(settings) {
     return currentWeek(settings) - 7 * 86400000;
 }
 
-function credit(guild, weekKey, userId, ms) {
+function siteShiftOf(guild) {
+    return guild.site && guild.site.shift === "night" ? "night" : "day";
+}
+
+function credit(guild, weekKey, userId, ms, period) {
     if (ms <= 0) return;
     if (!guild.weeks[weekKey]) guild.weeks[weekKey] = {};
     const row = guild.weeks[weekKey][userId] || { ms: 0, sessions: 0 };
     row.ms += ms;
     row.sessions += 1;
+    if (period === "day" || period === "night") row[period] = (row[period] || 0) + ms;
     guild.weeks[weekKey][userId] = row;
 }
 
@@ -74,7 +79,7 @@ function sweepStale(guild, settings, now) {
     for (const [userId, shift] of Object.entries(guild.active)) {
         if (now - shift.startedAt < limit) continue;
         const capped = Math.min(workedMs(shift, now), limit);
-        credit(guild, weekStartFor(shift.startedAt, settings), userId, capped);
+        credit(guild, weekStartFor(shift.startedAt, settings), userId, capped, shift.period);
         delete guild.active[userId];
         swept += 1;
     }
@@ -92,9 +97,10 @@ function load(guildId, settings) {
 function startShift(guildId, userId, settings) {
     const { all, guild } = load(guildId, settings);
     if (guild.active[userId]) return { ok: false, reason: "already_on" };
-    guild.active[userId] = { startedAt: Date.now(), breakStartedAt: null, breakMs: 0 };
+    const period = siteShiftOf(guild);
+    guild.active[userId] = { startedAt: Date.now(), breakStartedAt: null, breakMs: 0, period };
     writeAll(all);
-    return { ok: true };
+    return { ok: true, period };
 }
 
 function toggleBreak(guildId, userId, settings) {
@@ -124,12 +130,12 @@ function endShift(guildId, userId, settings) {
     const worked = workedMs(shift, now);
     const breakTotal = shift.breakMs + (shift.breakStartedAt ? now - shift.breakStartedAt : 0);
 
-    credit(guild, weekStartFor(shift.startedAt, settings), userId, worked);
+    credit(guild, weekStartFor(shift.startedAt, settings), userId, worked, shift.period);
     delete guild.active[userId];
     prune(guild, settings);
     writeAll(all);
 
-    return { ok: true, workedMs: worked, breakMs: breakTotal };
+    return { ok: true, workedMs: worked, breakMs: breakTotal, period: shift.period || null };
 }
 
 function getStatus(guildId, userId, settings) {
@@ -141,6 +147,9 @@ function getStatus(guildId, userId, settings) {
 
     return {
         weekMs: row.ms,
+        dayMs: row.day || 0,
+        nightMs: row.night || 0,
+        period: shift ? shift.period || null : null,
         sessions: row.sessions,
         onShift: !!shift,
         onBreak: !!(shift && shift.breakStartedAt),
@@ -156,8 +165,11 @@ function getLeaderboard(guildId, settings, which) {
     const rows = Object.entries(guild.weeks[week] || {}).map(([userId, r]) => ({
         userId,
         ms: r.ms,
+        dayMs: r.day || 0,
+        nightMs: r.night || 0,
         sessions: r.sessions,
-        live: 0
+        live: 0,
+        livePeriod: null
     }));
 
     if (which !== "last") {
@@ -165,14 +177,31 @@ function getLeaderboard(guildId, settings, which) {
         for (const [userId, shift] of Object.entries(guild.active)) {
             if (weekStartFor(shift.startedAt, settings) !== week) continue;
             const live = workedMs(shift, now);
+            const livePeriod = shift.period || null;
             const existing = rows.find(r => r.userId === userId);
-            if (existing) existing.live = live;
-            else rows.push({ userId, ms: 0, sessions: 0, live });
+            if (existing) Object.assign(existing, { live, livePeriod });
+            else rows.push({ userId, ms: 0, dayMs: 0, nightMs: 0, sessions: 0, live, livePeriod });
         }
     }
 
     rows.sort((a, b) => (b.ms + b.live) - (a.ms + a.live));
     return { week, rows };
+}
+
+function getSiteShift(guildId) {
+    const all = readAll();
+    const guild = getGuild(all, guildId);
+    return { shift: siteShiftOf(guild), changedAt: guild.site ? guild.site.changedAt : null, changedBy: guild.site ? guild.site.changedBy : null };
+}
+
+function setSiteShift(guildId, shift, userId) {
+    if (shift !== "day" && shift !== "night") throw new Error(`unknown site shift "${shift}"`);
+    const all = readAll();
+    const guild = getGuild(all, guildId);
+    const previous = siteShiftOf(guild);
+    guild.site = { shift, changedAt: Date.now(), changedBy: userId };
+    writeAll(all);
+    return { previous, shift, unchanged: previous === shift };
 }
 
 function formatDuration(ms) {
@@ -193,5 +222,7 @@ module.exports = {
     getLeaderboard,
     currentWeek,
     previousWeek,
-    formatDuration
+    formatDuration,
+    getSiteShift,
+    setSiteShift
 };
